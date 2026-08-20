@@ -1,9 +1,9 @@
 name: Terraform
 
-# Esteira de infraestrutura:
-#   PR            -> fmt + validate + plan (resultado no summary do job)
-#   merge na main -> apply automático (deploy contínuo)
-#   botão Actions -> plan | apply | destroy sob demanda (workflow_dispatch)
+# Esteira de infraestrutura em dois estágios:
+#   plan  -> livre (PR ou dispatch), não altera nada e não gera custo
+#   apply -> exige APROVAÇÃO no environment `aws-infra` antes de criar/destruir
+#            recursos, evitando que um merge ou clique acidental gere gastos.
 on:
   pull_request:
     branches: [main]
@@ -30,13 +30,17 @@ concurrency:
 env:
   AWS_REGION: us-east-1
   ROLE_ARN: arn:aws:iam::538880133939:role/gha-tc-infra-kubernetes
+  TF_VAR_grafana_cloud_otlp_endpoint: ${{ secrets.GRAFANA_CLOUD_OTLP_ENDPOINT }}
+  TF_VAR_grafana_cloud_instance_id: ${{ secrets.GRAFANA_CLOUD_INSTANCE_ID }}
+  TF_VAR_grafana_cloud_token: ${{ secrets.GRAFANA_CLOUD_TOKEN }}
 
 jobs:
-  terraform:
+  plan:
+    name: Plan (sem custo)
+    if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.action == 'plan')
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Credenciais AWS via OIDC (sem secrets)
         uses: aws-actions/configure-aws-credentials@v4
@@ -44,8 +48,7 @@ jobs:
           role-to-assume: ${{ env.ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+      - uses: hashicorp/setup-terraform@v3
         with:
           terraform_wrapper: false
 
@@ -59,7 +62,6 @@ jobs:
         run: terraform validate
 
       - name: Terraform plan
-        if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.action == 'plan')
         run: |
           terraform plan -no-color -input=false | tee plan.txt
           {
@@ -69,9 +71,50 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
+  apply:
+    name: Apply / Destroy (requer aprovação)
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && inputs.action != 'plan')
+    runs-on: ubuntu-latest
+    # Gate de custo: o job fica em "Review deployments" até um revisor aprovar.
+    environment: aws-infra
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Credenciais AWS via OIDC (sem secrets)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      - name: Terraform init
+        run: terraform init -input=false
+
       - name: Terraform apply
-        if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && inputs.action == 'apply')
+        if: github.event_name == 'push' || inputs.action == 'apply'
         run: terraform apply -auto-approve -input=false
+
+      - name: Remove o ALB órfão do Ingress antes do destroy
+        if: github.event_name == 'workflow_dispatch' && inputs.action == 'destroy'
+        # O ALB é criado em runtime pelo AWS Load Balancer Controller, então não está
+        # no state do Terraform. Se ele sobrevive ao destroy, suas ENIs impedem a
+        # exclusão da VPC e o apply trava. Removemos antes, de forma idempotente.
+        run: |
+          ALB_ARN=$(aws elbv2 describe-load-balancers \
+            --query "LoadBalancers[?starts_with(LoadBalancerName, 'k8s-oficinam')].LoadBalancerArn" \
+            --output text)
+          if [ -n "$ALB_ARN" ]; then
+            echo "Removendo ALB orfao: $ALB_ARN"
+            aws elbv2 delete-load-balancer --load-balancer-arn "$ALB_ARN"
+            sleep 30
+          fi
+          for TG in $(aws elbv2 describe-target-groups \
+            --query "TargetGroups[?starts_with(TargetGroupName, 'k8s-oficinam')].TargetGroupArn" --output text); do
+            aws elbv2 delete-target-group --target-group-arn "$TG" || true
+          done
 
       - name: Terraform destroy
         if: github.event_name == 'workflow_dispatch' && inputs.action == 'destroy'
