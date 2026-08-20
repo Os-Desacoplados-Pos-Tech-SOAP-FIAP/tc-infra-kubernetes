@@ -5,8 +5,18 @@ Infraestrutura Kubernetes do Tech Challenge (Fase 3 — FIAP Pós Arquitetura de
 esteira do app), **ECR** (scan on push, tags imutáveis). Provisionado por **Terraform**
 com state remoto em S3 (lock nativo `use_lockfile`).
 
-> API Gateway (Etapa 4), AWS Load Balancer Controller e Grafana Alloy (Etapas 5–6) serão
-> adicionados a este repositório.
+> AWS Load Balancer Controller e Grafana Alloy (Etapas 5–6) serão adicionados a este repositório.
+
+## API Gateway (stack `gateway/`)
+
+Stack Terraform **separada** (state próprio `infra-gateway/`) com o **API Gateway HTTP**:
+`POST /auth` → Lambda de autenticação por CPF · `/api/publico/*` → proxy ao ALB **protegido
+pelo Lambda authorizer** (JWT escopo CLIENTE) · `$default` → proxy ao ALB (rotas internas,
+JWT de funcionário validado pelo app). Esteira própria: `Terraform Gateway`.
+
+⚠️ O gateway referencia o ALB criado pelo Ingress do app em runtime — por isso o apply desta
+stack é o **último** da ordem de subida (cluster → database → lambda → app → **gateway**), e o
+destroy dela é o **primeiro**.
 
 ## Arquitetura
 
