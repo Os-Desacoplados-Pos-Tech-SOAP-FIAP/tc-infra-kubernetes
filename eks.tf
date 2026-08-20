@@ -38,6 +38,9 @@ module "eks" {
 
   eks_managed_node_groups = {
     default = {
+      # AL2023: o Amazon Linux 2 foi descontinuado a partir do EKS 1.33 —
+      # sem ami_type explícito o módulo tentaria AL2 e o CreateNodegroup falharia.
+      ami_type       = "AL2023_x86_64_STANDARD"
       instance_types = ["t3.medium"]
       desired_size   = 2
       min_size       = 2
