@@ -30,6 +30,10 @@ concurrency:
 env:
   AWS_REGION: us-east-1
   ROLE_ARN: arn:aws:iam::538880133939:role/gha-tc-infra-kubernetes
+  # Credenciais do Grafana Cloud (observabilidade). Vazias = recurso não criado.
+  TF_VAR_grafana_cloud_otlp_endpoint: ${{ secrets.GRAFANA_CLOUD_OTLP_ENDPOINT }}
+  TF_VAR_grafana_cloud_instance_id: ${{ secrets.GRAFANA_CLOUD_INSTANCE_ID }}
+  TF_VAR_grafana_cloud_token: ${{ secrets.GRAFANA_CLOUD_TOKEN }}
 
 jobs:
   terraform:
