@@ -17,9 +17,9 @@ variable "cluster_name" {
 }
 
 variable "cluster_version" {
-  description = "Versão do Kubernetes do cluster EKS."
+  description = "Versão do Kubernetes do cluster EKS (usar versão em standard support — conferir com `aws eks describe-cluster-versions`)."
   type        = string
-  default     = "1.30"
+  default     = "1.34"
 }
 
 variable "vpc_cidr" {
