@@ -97,11 +97,11 @@ jobs:
         if: github.event_name == 'push' || inputs.action == 'apply'
         run: terraform apply -auto-approve -input=false
 
-      - name: Remove o ALB órfão do Ingress antes do destroy
+      - name: Remove recursos órfãos do Ingress antes do destroy
         if: github.event_name == 'workflow_dispatch' && inputs.action == 'destroy'
-        # O ALB é criado em runtime pelo AWS Load Balancer Controller, então não está
-        # no state do Terraform. Se ele sobrevive ao destroy, suas ENIs impedem a
-        # exclusão da VPC e o apply trava. Removemos antes, de forma idempotente.
+        # ALB, target groups e security groups do Ingress são criados em runtime pelo
+        # AWS Load Balancer Controller e ficam FORA do state do Terraform. Se sobrevivem
+        # ao destroy, travam a exclusão da VPC. Removemos antes, de forma idempotente.
         run: |
           ALB_ARN=$(aws elbv2 describe-load-balancers \
             --query "LoadBalancers[?starts_with(LoadBalancerName, 'k8s-oficinam')].LoadBalancerArn" \
@@ -115,6 +115,16 @@ jobs:
             --query "TargetGroups[?starts_with(TargetGroupName, 'k8s-oficinam')].TargetGroupArn" --output text); do
             aws elbv2 delete-target-group --target-group-arn "$TG" || true
           done
+          # Os security groups do controller tambem ficam fora do state e impedem a
+          # exclusao da VPC (DependencyViolation), travando o destroy.
+          VPC=$(aws ec2 describe-vpcs --filters Name=tag:Name,Values=oficina-mecanica-vpc --query 'Vpcs[0].VpcId' --output text)
+          if [ "$VPC" != "None" ] && [ -n "$VPC" ]; then
+            SGS=$(aws ec2 describe-security-groups --filters Name=vpc-id,Values="$VPC" --query "SecurityGroups[?starts_with(GroupName, 'k8s-')].GroupId" --output text)
+            for SG in $SGS; do
+              echo "Removendo security group orfao: $SG"
+              aws ec2 delete-security-group --group-id "$SG" || true
+            done
+          fi
 
       - name: Terraform destroy
         if: github.event_name == 'workflow_dispatch' && inputs.action == 'destroy'
