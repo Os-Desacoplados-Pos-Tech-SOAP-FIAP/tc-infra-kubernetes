@@ -62,3 +62,25 @@ variable "ecr_image_tag_mutability" {
     error_message = "ecr_image_tag_mutability deve ser IMMUTABLE ou MUTABLE."
   }
 }
+
+# --- Grafana Cloud (observabilidade) ---
+# Preenchidas pela esteira a partir dos secrets do repositório. Vazias = observabilidade desligada.
+
+variable "grafana_cloud_otlp_endpoint" {
+  description = "Endpoint OTLP do Grafana Cloud (https://otlp-gateway-<regiao>.grafana.net/otlp)."
+  type        = string
+  default     = ""
+}
+
+variable "grafana_cloud_instance_id" {
+  description = "Instance ID do stack Grafana Cloud (usuário do basic auth)."
+  type        = string
+  default     = ""
+}
+
+variable "grafana_cloud_token" {
+  description = "Token de escrita do Grafana Cloud."
+  type        = string
+  sensitive   = true
+  default     = ""
+}
