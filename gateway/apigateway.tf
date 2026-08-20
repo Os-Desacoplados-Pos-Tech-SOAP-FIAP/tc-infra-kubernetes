@@ -54,6 +54,19 @@ resource "aws_lambda_permission" "authorizer" {
 }
 
 # --- Proxy para o ALB (app no EKS) ---
+#
+# Duas integrações porque o valor de {proxy} é relativo ao prefixo casado pela rota:
+# na rota /api/publico/{proxy+} o {proxy} já vem SEM o prefixo, então a URI precisa
+# recompor o caminho. A rota catch-all usa ANY /{proxy+} (e não $default, que não
+# define variáveis de caminho e por isso é incompatível com URIs contendo {proxy}).
+
+resource "aws_apigatewayv2_integration" "alb_publico" {
+  api_id                 = aws_apigatewayv2_api.this.id
+  integration_type       = "HTTP_PROXY"
+  integration_method     = "ANY"
+  integration_uri        = "http://${data.aws_lb.app.dns_name}/api/publico/{proxy}"
+  payload_format_version = "1.0"
+}
 
 resource "aws_apigatewayv2_integration" "alb_proxy" {
   api_id                 = aws_apigatewayv2_api.this.id
@@ -67,14 +80,14 @@ resource "aws_apigatewayv2_integration" "alb_proxy" {
 resource "aws_apigatewayv2_route" "publico" {
   api_id             = aws_apigatewayv2_api.this.id
   route_key          = "ANY /api/publico/{proxy+}"
-  target             = "integrations/${aws_apigatewayv2_integration.alb_proxy.id}"
+  target             = "integrations/${aws_apigatewayv2_integration.alb_publico.id}"
   authorization_type = "CUSTOM"
   authorizer_id      = aws_apigatewayv2_authorizer.cliente.id
 }
 
 # Demais rotas (funcionários): proxy direto — o app valida o JWT interno.
-resource "aws_apigatewayv2_route" "default" {
+resource "aws_apigatewayv2_route" "catch_all" {
   api_id    = aws_apigatewayv2_api.this.id
-  route_key = "$default"
+  route_key = "ANY /{proxy+}"
   target    = "integrations/${aws_apigatewayv2_integration.alb_proxy.id}"
 }
