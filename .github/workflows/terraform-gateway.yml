@@ -1,16 +1,14 @@
-name: Terraform
+name: Terraform Gateway
 
-# Esteira de infraestrutura:
-#   PR            -> fmt + validate + plan (resultado no summary do job)
-#   merge na main -> apply automático (deploy contínuo)
-#   botão Actions -> plan | apply | destroy sob demanda (workflow_dispatch)
+# Stack do API Gateway — separada do cluster porque referencia o ALB, que só
+# existe depois do deploy do app. Apply desta stack é o ÚLTIMO da ordem de subida.
 on:
   pull_request:
     branches: [main]
-    paths-ignore: ['gateway/**', '.github/workflows/terraform-gateway.yml']
+    paths: ['gateway/**', '.github/workflows/terraform-gateway.yml']
   push:
     branches: [main]
-    paths-ignore: ['gateway/**', '.github/workflows/terraform-gateway.yml']
+    paths: ['gateway/**', '.github/workflows/terraform-gateway.yml']
   workflow_dispatch:
     inputs:
       action:
@@ -20,11 +18,11 @@ on:
         default: plan
 
 permissions:
-  id-token: write # OIDC: o job troca este token por credenciais AWS temporárias
+  id-token: write
   contents: read
 
 concurrency:
-  group: terraform-${{ github.repository }}
+  group: terraform-gateway-${{ github.repository }}
   cancel-in-progress: false
 
 env:
@@ -50,20 +48,20 @@ jobs:
           terraform_wrapper: false
 
       - name: Terraform fmt
-        run: terraform fmt -check -recursive
+        run: terraform -chdir=gateway fmt -check -recursive
 
       - name: Terraform init
-        run: terraform init -input=false
+        run: terraform -chdir=gateway init -input=false
 
       - name: Terraform validate
-        run: terraform validate
+        run: terraform -chdir=gateway validate
 
       - name: Terraform plan
         if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.action == 'plan')
         run: |
-          terraform plan -no-color -input=false | tee plan.txt
+          terraform -chdir=gateway plan -no-color -input=false | tee plan.txt
           {
-            echo '## Terraform plan'
+            echo '## Terraform plan (gateway)'
             echo '```'
             tail -n 80 plan.txt
             echo '```'
@@ -71,8 +69,8 @@ jobs:
 
       - name: Terraform apply
         if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && inputs.action == 'apply')
-        run: terraform apply -auto-approve -input=false
+        run: terraform -chdir=gateway apply -auto-approve -input=false
 
       - name: Terraform destroy
         if: github.event_name == 'workflow_dispatch' && inputs.action == 'destroy'
-        run: terraform destroy -auto-approve -input=false
+        run: terraform -chdir=gateway destroy -auto-approve -input=false
