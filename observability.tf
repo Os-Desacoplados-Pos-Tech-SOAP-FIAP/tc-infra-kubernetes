@@ -58,9 +58,22 @@ resource "helm_release" "k8s_monitoring" {
       }
     }
 
-    alloy-metrics  = { enabled = true }
-    alloy-logs     = { enabled = true }
-    alloy-receiver = { enabled = true }
+    alloy-metrics = { enabled = true }
+    alloy-logs    = { enabled = true }
+
+    # O receiver so aceita OTLP se a porta estiver declarada aqui tambem: o chart
+    # valida que cada receiver habilitado tem a porta correspondente exposta.
+    alloy-receiver = {
+      enabled = true
+      alloy = {
+        extraPorts = [{
+          name       = "otlp-http"
+          port       = 4318
+          targetPort = 4318
+          protocol   = "TCP"
+        }]
+      }
+    }
   })]
 
   depends_on = [module.eks]
