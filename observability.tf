@@ -30,6 +30,8 @@ resource "helm_release" "k8s_monitoring" {
       name = "grafana-cloud-otlp"
       type = "otlp"
       url  = var.grafana_cloud_otlp_endpoint
+      # O gateway OTLP do Grafana Cloud so aceita HTTP; o padrao do chart e gRPC.
+      protocol = "http"
       auth = {
         type     = "basic"
         username = var.grafana_cloud_instance_id
