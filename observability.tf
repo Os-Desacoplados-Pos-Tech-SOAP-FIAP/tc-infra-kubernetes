@@ -14,10 +14,12 @@ locals {
 resource "helm_release" "k8s_monitoring" {
   count = local.observabilidade_habilitada ? 1 : 0
 
-  name             = "grafana-k8s-monitoring"
-  repository       = "https://grafana.github.io/helm-charts"
-  chart            = "k8s-monitoring"
-  version          = "~> 2.0"
+  name       = "grafana-k8s-monitoring"
+  repository = "https://grafana.github.io/helm-charts"
+  chart      = "k8s-monitoring"
+  # Versao exata, nao range: o provider helm v3 recusa o apply quando a versao
+  # resolvida no plan difere da constraint escrita aqui.
+  version          = "2.0.46"
   namespace        = "observability"
   create_namespace = true
 
