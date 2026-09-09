@@ -52,6 +52,12 @@ variable "app_deploy_role_arn" {
   default     = "arn:aws:iam::538880133939:role/gha-tech_challange_1"
 }
 
+variable "cluster_admin_principal_arns" {
+  description = "Usuarios/roles IAM que recebem acesso administrativo ao cluster para operacao manual via kubectl (diagnostico e demonstracao)."
+  type        = list(string)
+  default     = ["arn:aws:iam::538880133939:user/hailton"]
+}
+
 variable "ecr_image_tag_mutability" {
   description = "Mutabilidade das tags do ECR. IMMUTABLE (recomendado p/ CI/CD) evita sobrescrever tags."
   type        = string
