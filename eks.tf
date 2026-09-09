@@ -19,19 +19,39 @@ module "eks" {
 
   # Acesso de deploy para a esteira do app (tech_challange_1): permite que o CD
   # rode kubectl no cluster (Etapa 5) sem access keys, via OIDC.
-  access_entries = {
-    gha_app = {
-      principal_arn = var.app_deploy_role_arn
-      policy_associations = {
-        admin = {
-          policy_arn = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy"
-          access_scope = {
-            type = "cluster"
+  #
+  # Os operadores humanos listados em cluster_admin_principal_arns tambem
+  # recebem acesso: sem isso o cluster so e alcancavel pela esteira, o que
+  # inviabiliza diagnostico e a demonstracao por kubectl.
+  access_entries = merge(
+    {
+      gha_app = {
+        principal_arn = var.app_deploy_role_arn
+        policy_associations = {
+          admin = {
+            policy_arn = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy"
+            access_scope = {
+              type = "cluster"
+            }
+          }
+        }
+      }
+    },
+    {
+      for arn in var.cluster_admin_principal_arns :
+      "operador_${basename(arn)}" => {
+        principal_arn = arn
+        policy_associations = {
+          admin = {
+            policy_arn = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy"
+            access_scope = {
+              type = "cluster"
+            }
           }
         }
       }
     }
-  }
+  )
 
   vpc_id     = module.vpc.vpc_id
   subnet_ids = module.vpc.private_subnets
